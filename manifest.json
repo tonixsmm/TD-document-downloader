@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "TD Document Downloader",
+  "version": "1.0.0",
+  "description": "Downloads passport and health form PDFs from Terradotta Study Abroad exports.",
+
+  "action": {
+    "default_popup": "src/popup.html",
+    "default_icon": {
+      "16":  "icons/icon16.png",
+      "48":  "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+
+  "icons": {
+    "16":  "icons/icon16.png",
+    "48":  "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+
+  "host_permissions": [
+    "https://studyabroad.gonzaga.edu/*"
+  ],
+
+  "permissions": [
+    "downloads"
+  ],
+
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}
