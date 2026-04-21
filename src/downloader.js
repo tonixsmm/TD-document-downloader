@@ -27,6 +27,27 @@ if (typeof module !== 'undefined') {
 }
 
 // ---------------------------------------------------------------------------
+// Library preflight check
+// ---------------------------------------------------------------------------
+
+function assertLibrariesLoaded() {
+  const missing = [];
+  if (typeof window.JSZip !== 'function')
+    missing.push('JSZip');
+  if (!window.jspdf || typeof window.jspdf.jsPDF !== 'function')
+    missing.push('jsPDF');
+  if (!window.mammoth || typeof window.mammoth.convertToHtml !== 'function')
+    missing.push('mammoth');
+  if (missing.length > 0) {
+    throw new Error(
+      `Required libraries failed to initialize: ${missing.join(', ')}. ` +
+      `This is typically caused by antivirus or endpoint-security software on managed Windows machines. ` +
+      `Try disabling your security software temporarily or contact your IT department.`
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Fetch helpers
 // ---------------------------------------------------------------------------
 
@@ -118,6 +139,7 @@ function buildQueue(config) {
  * @returns {Promise<{ zipBlob: Blob, manifest: Array }>}
  */
 async function runDownload(config, onProgress) {
+  assertLibrariesLoaded();
   const { template } = config;
   const queue = buildQueue(config);
   const total = queue.length;
