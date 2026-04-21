@@ -189,6 +189,7 @@ function renderProgramTable() {
 function renderDocTypeTable() {
   docTypeTbody.innerHTML = '';
   state.docTypeRows.forEach((row, i) => {
+    if (row.convertToPdf === undefined) row.convertToPdf = true;
     const tr = document.createElement('tr');
     if (!row.include) tr.classList.add('excluded');
     tr.innerHTML = `
@@ -196,15 +197,21 @@ function renderDocTypeTable() {
       <td><span class="field-code-badge">${escHtml(row.fieldCode)}</span></td>
       <td class="detected-label">${escHtml(row.detectedLabel)}</td>
       <td><input class="cfg-input" data-dt-name="${i}" value="${escHtml(row.docTypeName)}" maxlength="60" spellcheck="false"></td>
+      <td style="text-align:center"><input type="checkbox" class="cfg-check" data-dt-pdf="${i}" ${row.convertToPdf ? 'checked' : ''}></td>
     `;
     docTypeTbody.appendChild(tr);
   });
 
-  docTypeTbody.querySelectorAll('input[type=checkbox]').forEach(cb => {
+  docTypeTbody.querySelectorAll('input[data-dt]').forEach(cb => {
     cb.addEventListener('change', e => {
       const i = +e.target.dataset.dt;
       state.docTypeRows[i].include = e.target.checked;
       e.target.closest('tr').classList.toggle('excluded', !e.target.checked);
+    });
+  });
+  docTypeTbody.querySelectorAll('input[data-dt-pdf]').forEach(cb => {
+    cb.addEventListener('change', e => {
+      state.docTypeRows[+e.target.dataset.dtPdf].convertToPdf = e.target.checked;
     });
   });
   docTypeTbody.querySelectorAll('input[data-dt-name]').forEach(inp => {

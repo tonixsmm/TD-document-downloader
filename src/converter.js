@@ -316,6 +316,6 @@ async function convertToPdf(bytes, ext, category) {
 // ---------------------------------------------------------------------------
 // Export
 // ---------------------------------------------------------------------------
-if (typeof module !== 'undefined') {
+if (typeof require === 'function') {
   module.exports = { detectType, classifyHtmlResponse, convertToPdf, imageToPdf, wordToPdf };
 }

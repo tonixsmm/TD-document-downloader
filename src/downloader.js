@@ -20,7 +20,7 @@
 
 // In Node test context, load via require(). In the browser extension the
 // functions are already globals exposed by the preceding <script> tags.
-if (typeof module !== 'undefined') {
+if (typeof require === 'function') {
   var applyNamingConvention = require('./config').applyNamingConvention;  // eslint-disable-line no-var
   var detectType   = require('./converter').detectType;                    // eslint-disable-line no-var
   var convertToPdf = require('./converter').convertToPdf;                  // eslint-disable-line no-var
@@ -113,14 +113,15 @@ function buildQueue(config) {
         if (!url) continue;
 
         queue.push({
-          programCode: programRow.code,
-          programYear: programRow.year,
-          programFull: parsed.fullName,
+          programCode:   programRow.code,
+          programYear:   programRow.year,
+          programFull:   parsed.fullName,
           student,
-          docTypeName: docTypeRow.docTypeName,
-          folder: docTypeRow.folder || docTypeRow.docTypeName,
+          docTypeName:   docTypeRow.docTypeName,
+          folder:        docTypeRow.folder || docTypeRow.docTypeName,
           fieldCode,
           url,
+          convertToPdf:  docTypeRow.convertToPdf !== false,
         });
       }
     }
@@ -176,8 +177,13 @@ async function runDownload(config, onProgress) {
       // 2. Detect
       const { ext, category } = detectType(bytes);
 
-      // 3. Convert
-      const result = await convertToPdf(bytes, ext, category);
+      // 3. Convert (or keep original if user disabled PDF conversion for this doc type)
+      let result;
+      if (!item.convertToPdf && category !== 'pdf' && category !== 'html') {
+        result = { pdfBytes: null, status: 'DOWNLOADED_ORIGINAL', note: '', originalBytes: bytes, originalExt: ext };
+      } else {
+        result = await convertToPdf(bytes, ext, category);
+      }
 
       // 4. Build filename
       const filename = applyNamingConvention(template, {
@@ -188,17 +194,17 @@ async function runDownload(config, onProgress) {
         YEAR:     programYear,
       });
 
-      const zipPath = `${programCode}/${folder}/${filename}.pdf`;
-
       if (result.pdfBytes) {
+        const zipPath = `${programCode}/${folder}/${filename}.pdf`;
         zip.file(zipPath, result.pdfBytes);
         manifestRow.output_path = zipPath;
         manifestRow.status = result.status;
         onProgress({ label, status: result.status, done: ++done, total });
       } else {
-        // Save original alongside manifest so coordinator has it
-        if (result.originalBytes) {
-          const rawPath = `${programCode}/${folder}/${filename}_NEEDS_REVIEW${result.originalExt || '.bin'}`;
+        if (result.originalBytes && result.status !== 'NOT_UPLOADED') {
+          const suffix = result.status === 'DOWNLOADED_ORIGINAL' ? '' : '_NEEDS_REVIEW';
+          const rawExt = result.originalExt || '.bin';
+          const rawPath = `${programCode}/${folder}/${filename}${suffix}${rawExt}`;
           zip.file(rawPath, result.originalBytes);
           manifestRow.output_path = rawPath;
         }
