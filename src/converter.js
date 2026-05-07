@@ -221,24 +221,90 @@ async function wordToPdf(bytes, ext) {
     throw new Error(`${ext} conversion not supported in browser (no library)`);
   }
 
-  // mammoth needs an ArrayBuffer
   const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-  const result = await window.mammoth.convertToHtml({ arrayBuffer: ab });
-  const htmlContent = result.value;
 
-  // Render HTML into a hidden div to measure content, then print to PDF
+  // Extract embedded images from word/media/ — students often paste passport scans
+  const zip = await new window.JSZip().loadAsync(bytes);
+  const supportedExts = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']);
+  const mimeMap = {
+    '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+    '.png': 'image/png',  '.gif': 'image/gif',
+    '.webp': 'image/webp', '.bmp': 'image/bmp',
+  };
+  const mediaFiles = Object.keys(zip.files)
+    .filter(n => {
+      if (!n.startsWith('word/media/') || zip.files[n].dir) return false;
+      const e = n.slice(n.lastIndexOf('.')).toLowerCase();
+      return supportedExts.has(e);
+    })
+    .sort();
+
+  // Extract plain text for any text content
+  const textResult = await window.mammoth.extractRawText({ arrayBuffer: ab });
+  const text = (textResult.value || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+
+  if (!text && mediaFiles.length === 0) {
+    throw new Error('Docx Failed to Convert — no extractable content (file may be corrupted)');
+  }
+
+  const margin = 36;
+  const pageW = 612, pageH = 792;
+  const maxW = pageW - margin * 2, maxH = pageH - margin * 2;
   // eslint-disable-next-line new-cap
   const pdf = new window.jspdf.jsPDF({ unit: 'pt', format: 'letter' });
-  await new Promise((resolve, reject) => {
-    pdf.html(htmlContent, {
-      callback: (doc) => { resolve(doc); },
-      x: 36,
-      y: 36,
-      width: 540,    // 8.5in - 1in margins = 7.5in * 72 = 540pt
-      windowWidth: 800,
-    });
-  });
+  let hasContent = false;
 
+  // Add text pages if present
+  if (text) {
+    const fontSize = 11, lineHeight = 15;
+    pdf.setFontSize(fontSize);
+    const lines = pdf.splitTextToSize(text, maxW);
+    let y = margin + fontSize;
+    for (const line of lines) {
+      if (y > pageH - margin) { pdf.addPage(); y = margin + fontSize; }
+      pdf.text(line, margin, y);
+      y += lineHeight;
+    }
+    hasContent = true;
+  }
+
+  // Add one page per embedded image (e.g. passport scan pasted into Word)
+  for (const mediaPath of mediaFiles) {
+    const imgExt = mediaPath.slice(mediaPath.lastIndexOf('.')).toLowerCase();
+    const mime = mimeMap[imgExt];
+    const imgBytes = await zip.files[mediaPath].async('uint8array');
+    const fmt = (imgExt === '.jpg' || imgExt === '.jpeg') ? 'JPEG' : 'PNG';
+
+    await new Promise((resolve) => {
+      // 10-second timeout so a bad image never hangs the whole download
+      const timer = setTimeout(resolve, 10000);
+      const blob = new Blob([imgBytes], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        clearTimeout(timer);
+        try {
+          URL.revokeObjectURL(url);
+          const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+          const drawW = img.width * scale, drawH = img.height * scale;
+          const x = margin + (maxW - drawW) / 2;
+          const y = margin + (maxH - drawH) / 2;
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          canvas.getContext('2d').drawImage(img, 0, 0);
+          if (hasContent) pdf.addPage();
+          pdf.addImage(canvas.toDataURL(mime), fmt, x, y, drawW, drawH);
+          hasContent = true;
+        } catch (_) { /* skip unrenderable image, try next */ }
+        resolve();
+      };
+      img.onerror = () => { clearTimeout(timer); URL.revokeObjectURL(url); resolve(); };
+      img.src = url;
+    });
+  }
+
+  if (!hasContent) throw new Error('Docx Failed to Convert — no renderable content found');
   return new Uint8Array(pdf.output('arraybuffer'));
 }
 
@@ -302,7 +368,7 @@ async function convertToPdf(bytes, ext, category) {
     } catch (e) {
       return {
         pdfBytes: null,
-        status: ext === '.doc' || ext === '.rtf' ? `WORD_UNSUPPORTED_FORMAT` : `WORD_CONVERSION_FAILED`,
+        status: ext === '.doc' || ext === '.rtf' ? `WORD_UNSUPPORTED_FORMAT` : `Docx Failed to Convert`,
         note: e.message,
         originalBytes: bytes,
         originalExt: ext,

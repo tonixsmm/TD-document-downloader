@@ -295,7 +295,7 @@ async function startDownload() {
       // Log line
       const div = document.createElement('div');
       const ok = status.startsWith('DOWNLOADED') || status.startsWith('CONVERTED');
-      const isErr = status === 'ERROR' || status.startsWith('IMAGE_CONV') || status.startsWith('WORD_CONV');
+      const isErr = status === 'ERROR' || status.startsWith('IMAGE_CONV') || status.startsWith('WORD_CONV') || status === 'Docx Failed to Convert';
       const isFetching = status === 'fetching';
 
       div.className = isFetching ? 'log-fetching' : ok ? 'log-ok' : isErr ? 'log-err' : 'log-warn';
